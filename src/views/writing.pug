@@ -1,0 +1,6 @@
+.card.p-2
+    .card-body
+        form(hx-post="paper" hx-target="#paper-slot" hx-swap="innerHTML")
+            .form-group.mb-2
+                input(name="msg")
+            button.btn.btn-primary Add
