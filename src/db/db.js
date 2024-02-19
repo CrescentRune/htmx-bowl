@@ -30,6 +30,7 @@ const createSecretsTable = `
         room_id VARCHAR(16) FOREIGN KEY REFERENCES room,
         user TEXT,
         secret TEXT,
+        expiration DATETIME,
     )
 `
 
@@ -52,16 +53,30 @@ function create_room() {
 }
 
 function user_joins_room() {
-
+ // Generate room secret for user and return cookie that resp should set for browser
 }
 
-function validate_user(roomTarget,) {
+async function validate_user(roomTarget, userName, userSecret) {
+    const getSecret = 'SELECT * FROM secrets WHERE room_id = ? AND user = userName LIMIT 1';
 
+    return new Promise(function(resolve, reject) {
+        db.run(getSecret, roomTarget, function (err, row) {
+            row ? resolve(true) : reject('Err: User did not have valid secret');
+        });
+    });
 }
 
+async function userValidator (req, res, next) {
+    try {
+        await validate_user(req.roomTarget, req.user, req.cookies.x_bowl_secret)
+    }
+    catch {
+        throw new Error('User: invalid secret for room & user');
+    }
+}
 
 init_db();
 
 
-module.exports = { create_room, }
+module.exports = { create_room, userValidator }
 
