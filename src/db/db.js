@@ -52,8 +52,29 @@ function create_room() {
     
 }
 
-function user_joins_room() {
- // Generate room secret for user and return cookie that resp should set for browser
+function generate_secret_stub() {
+    return 'aaaaaa';
+}
+
+function user_joins_room(name, roomCode) {
+    // Generate room secret for user and return cookie that resp should set for browser 
+    const insertUserStmt = `INSERT INTO secrets (room_id, name, secret, expiration) VALUES (?, ?, ?, datetime('now'))`;
+
+    const secret = generate_secret_stub();
+
+    return new Promise(function(resolve, reject) {
+        db.exec(insertUserStmt, roomCode, name, secret, function (err, res) {
+            if (!row) {
+                reject();
+            }
+            resolve(secret);
+        });
+    });
+
+}
+
+function create_user_secret() {
+    
 }
 
 async function validate_user(roomTarget, userName, userSecret) {
