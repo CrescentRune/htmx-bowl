@@ -1,13 +1,22 @@
 const sqlite3 = require('sqlite3');
 const db = new sqlite3('src/db/bowl.db');
 
+const notStarted = 1;
+const locked = 2;
+const started = 3;
+const playing = 4;
+const ended = 5;
+
+
 const generateRoomsTable = `
     CREATE TABLE IF NOT EXISTS room (
         id VARCHAR(16),
+        joincode VARCHAR(4),
         started DATETIME,
-        status VARCHAR(3),
-        owner text,
+        status INTEGER,
+        owner TEXT,
         lastupdated DATETIME,
+        users INTEGER,
         PRIMARY KEY('id')
     );
 `;
@@ -25,12 +34,10 @@ const generatePaperTable = `
     );
 `
 
-const createSecretsTable = `
-    CREATE TABLE IF NOT EXISTS secrets (
+const createUsersTable = `
+    CREATE TABLE IF NOT EXISTS users (
         room_id VARCHAR(16) FOREIGN KEY REFERENCES room,
-        user TEXT,
-        secret TEXT,
-        expiration DATETIME,
+        user TEXT UNIQUE,
     )
 `
 
@@ -38,66 +45,60 @@ const createRoomPaperIndex = `
     CREATE INDEX IF NOT EXISTS room_paper ON paper (room_id);
 `
 
+const createRoomStmt = `INSERT INTO room (id, joincode owner, started, status, lastupdated) VALUES (?, ?, datetime('now'), 1, datetime('now'))`
+
 function init_db() {
     db.exec(
         generateRoomsTable,
         generatePaperTable,
-        createSecretsTable,
+        createUsersTable,
         createOpenRoomsView,
         createRoomPaperIndex,
     );
 }
 
-function create_room() {
+function create_room(name) {
+    let room_id = generate_secret_stub();
+    let join_code = room_id.substr(room_id.length - 4);
     
+    db.exec(createRoomStmt, room_id, join_code, name);
 }
 
 function generate_secret_stub() {
-    return 'aaaaaa';
+    return crypto.randomBytes(16).toString('hex');
 }
+
+
+function get_room_by_code(roomCode) {
+    return new Promise(function (resolve, reject) {
+        db.exec('SELECT * FROM rooms WHERE joincode = ?', roomCode, function (err, res) {
+            err ? reject(err) : resolve(res);   
+        });
+    })
+}
+
+function insert_user(room_info, name) {
+    if (!room_info) {
+        throw new Error('room_info must be valid!');
+    }
+    return new Promise(function (resolve, reject) {
+        db.exec('INSERT INTO users (room_id, name) VALUES (?, ?)', (err, res) => {
+            err ? reject(err) : resolve(room_info.room_id);
+        });
+    });
+}
+
 
 function user_joins_room(name, roomCode) {
-    // Generate room secret for user and return cookie that resp should set for browser 
-    const insertUserStmt = `INSERT INTO secrets (room_id, name, secret, expiration) VALUES (?, ?, ?, datetime('now'))`;
 
-    const secret = generate_secret_stub();
 
-    return new Promise(function(resolve, reject) {
-        db.exec(insertUserStmt, roomCode, name, secret, function (err, res) {
-            if (!row) {
-                reject();
-            }
-            resolve(secret);
-        });
-    });
+    return get_room_by_code(roomCode)
+        .then(
+            insert_user        
+        )
 
 }
 
-function create_user_secret() {
-    
-}
 
-async function validate_user(roomTarget, userName, userSecret) {
-    const getSecret = 'SELECT * FROM secrets WHERE room_id = ? AND user = userName LIMIT 1';
-
-    return new Promise(function(resolve, reject) {
-        db.run(getSecret, roomTarget, function (err, row) {
-            row ? resolve(true) : reject('Err: User did not have valid secret');
-        });
-    });
-}
-
-async function userValidator (req, res, next) {
-    try {
-        await validate_user(req.roomTarget, req.user, req.cookies.x_bowl_secret)
-    }
-    catch {
-        throw new Error('User: invalid secret for room & user');
-    }
-}
-
-init_db();
-
-
-module.exports = { create_room, userValidator }
+module.exports = { create_room, userValidator, user_joins_room, }
 
