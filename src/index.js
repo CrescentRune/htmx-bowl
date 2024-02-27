@@ -1,8 +1,11 @@
 const express = require('express');
-const pug = require('pug');
+//const pug = require('pug');
 const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 
-import * as db from './db/db';
+const db = require('./db/db.js');
+
+db.init_db();
 
 const static_dir = 'public';
 
@@ -18,7 +21,8 @@ function create_jwt(name, room_id) {
 }
 
 function authenticateUser(req, res, next) {
-    let auth = req.headers['authorization'];
+    let auth = req.cookies['roomauth'];
+    if (!auth) res.sendStatus(401);
     let token = auth.split(' ')[1];
 
     jwt.verify(token, secret, (err, val) => {
@@ -29,16 +33,11 @@ function authenticateUser(req, res, next) {
     });
 }
 
-function validate_jwt(token) {
-    if (!token) return null;
-    let result = jwt.verify(token, secret);
-    return result;
-}
-
 // Set up Express settings for middleware
 app.use(express.static(`${__dirname}/${static_dir}` ));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Set up view template engine
 app.set('view engine', 'pug'); 
@@ -47,22 +46,29 @@ app.set('views', __dirname + '/views');
 const PORT = process.env.PORT || 3000;
 
 app.post('/room', (req, res) => {
+    console.log('== room ==');
     const user = req.body.nickname;
     const room = req.body.roomCode;
     const mode = room ? 'JOIN' : 'CREATE';
   
     if (mode === 'CREATE') {
        db.create_room(user)
-            .then((res) => {
-                let token = create_jwt(user, res);
-                res.setHeader('SetCookie', `Authorization: Bea`);
+            .then((roomId) => {
+                console.log(`room created: ${roomId}`);
+                let token = create_jwt(user, roomId);
+                res.cookie('roomauth', token, {httpOnly: true, maxAge: 18000});
+                res.render('writing', {name: user, roomCode: roomId.substr(roomId.length-4), papers: ['Hello', 'this', 'is', 'a', 'test']});
             })
-            .catch((err) => {});
+            .catch((err) => {console.log(err)});
     }
     else {
-        db.join_room(user, room);
+        db.join_room(user, room).then((room) => {
+            console.log(`room joined: ${room.joincode}`);
+            let token = create_jwt(user, room.id);
+            res.cookie('roomauth', token, {httpOnly: true, maxAge: 18000});
+            res.render('writing', {name: user, roomCode: room.joincode, papers: ['Hello', 'this', 'is', 'a', 'test']});
+        });
     }
-    res.render('writing', {name: user, roomCode: room, papers: ['Hello', 'this', 'is', 'a', 'test']});
 });
 
 app.get('/paper', authenticateUser, (req, res) => {
@@ -73,7 +79,6 @@ app.post('/paper', authenticateUser, (req, res) => {
     let content = req.body.msg;
     
     papers.push(content);
-    console.log(papers);
     res.render('paper', { papers });
 });
 

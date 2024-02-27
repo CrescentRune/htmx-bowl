@@ -1,5 +1,8 @@
 const sqlite3 = require('sqlite3');
-const db = new sqlite3('src/db/bowl.db');
+const db = new sqlite3.Database('src/db/bowl.db');
+const {
+  randomBytes,
+} = require('node:crypto');
 
 const notStarted = 1;
 const locked = 2;
@@ -21,23 +24,23 @@ const generateRoomsTable = `
     );
 `;
 
-const createOpenRoomsView = `
-    CREATE VIEW IF NOT EXISTS open_rooms AS 
-    SELECT id, substr(id, -4) AS join_code FROM room WHERE status='OPEN';
-`
+//const createOpenRoomsView = `
+//    CREATE VIEW IF NOT EXISTS open_rooms AS 
+//    SELECT id, substr(id, -4) AS join_code FROM room WHERE status='OPEN';
+//`
 
 const generatePaperTable = `
     CREATE TABLE IF NOT EXISTS paper (
-        room_id VARCHAR(16) FOREIGN KEY REFERENCES room,
+        room_id VARCHAR(16),
         submitter TEXT,
-        body TEXT,
+        body TEXT
     );
 `
 
 const createUsersTable = `
-    CREATE TABLE IF NOT EXISTS users (
-        room_id VARCHAR(16) FOREIGN KEY REFERENCES room,
-        user TEXT UNIQUE,
+    CREATE TABLE IF NOT EXISTS user (
+        room_id VARCHAR(16),
+        user TEXT
     )
 `
 
@@ -45,33 +48,42 @@ const createRoomPaperIndex = `
     CREATE INDEX IF NOT EXISTS room_paper ON paper (room_id);
 `
 
-const createRoomStmt = `INSERT INTO room (id, joincode owner, started, status, lastupdated) VALUES (?, ?, datetime('now'), 1, datetime('now'))`
+const createJoinIndex = `
+    CREATE INDEX IF NOT EXISTS room_join ON room (joincode);
+`
+
+const createRoomStmt = `INSERT INTO room (id, joincode, owner, started, status, lastupdated) VALUES (?, ?, ?, datetime('now'), 1, datetime('now'))`
 
 function init_db() {
-    db.exec(
-        generateRoomsTable,
-        generatePaperTable,
-        createUsersTable,
-        createOpenRoomsView,
-        createRoomPaperIndex,
-    );
+    db.run(generateRoomsTable);
+    db.run(generatePaperTable);
+    db.run(createUsersTable);
+ //   db.run(createOpenRoomsView);
+    db.run(createJoinIndex);
+    db.run(createRoomPaperIndex);
 }
 
 function create_room(name) {
     let room_id = generate_secret_stub();
     let join_code = room_id.substr(room_id.length - 4);
     
-    db.exec(createRoomStmt, room_id, join_code, name);
+    return new Promise((resolve, reject) => {
+        db.run(createRoomStmt, room_id, join_code, name, (err) => {
+            if (err) reject(err);
+            resolve(room_id);
+        });
+    });
 }
 
 function generate_secret_stub() {
-    return crypto.randomBytes(16).toString('hex');
+    return randomBytes(16).toString('hex');
 }
 
 
 function get_room_by_code(roomCode) {
     return new Promise(function (resolve, reject) {
-        db.exec('SELECT * FROM rooms WHERE joincode = ?', roomCode, function (err, res) {
+        db.get("SELECT id, joincode FROM room WHERE joincode = ?", roomCode, function (err, res) {
+            console.log(err, res);
             err ? reject(err) : resolve(res);   
         });
     })
@@ -82,23 +94,23 @@ function insert_user(room_info, name) {
         throw new Error('room_info must be valid!');
     }
     return new Promise(function (resolve, reject) {
-        db.exec('INSERT INTO users (room_id, name) VALUES (?, ?)', (err, res) => {
-            err ? reject(err) : resolve(room_info.room_id);
+        db.run('INSERT INTO users (room_id, user) VALUES (?, ?)', room_info.id, name, (err, res) => {
+            err ? reject(err) : resolve(room_info.id);
         });
     });
 }
 
 
-function user_joins_room(name, roomCode) {
-
+function join_room(name, roomCode) {
 
     return get_room_by_code(roomCode)
-        .then(
-            insert_user        
-        )
-
+        .then((res) => {
+            //insert_user(res, name);
+            return res;   
+        });
 }
 
 
-module.exports = { create_room, userValidator, user_joins_room, }
+
+module.exports = { create_room, join_room, init_db }
 
