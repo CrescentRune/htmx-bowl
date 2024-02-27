@@ -32,7 +32,7 @@ const generateRoomsTable = `
 const generatePaperTable = `
     CREATE TABLE IF NOT EXISTS paper (
         room_id VARCHAR(16),
-        submitter TEXT,
+        user TEXT,
         body TEXT
     );
 `
@@ -94,7 +94,7 @@ function insert_user(room_info, name) {
         throw new Error('room_info must be valid!');
     }
     return new Promise(function (resolve, reject) {
-        db.run('INSERT INTO users (room_id, user) VALUES (?, ?)', room_info.id, name, (err, res) => {
+        db.run('INSERT INTO user (room_id, user) VALUES (?, ?)', room_info.id, name, (err, res) => {
             err ? reject(err) : resolve(room_info.id);
         });
     });
@@ -110,6 +110,28 @@ function join_room(name, roomCode) {
         });
 }
 
+function add_paper(user, roomId, content) {
+    return new Promise( function (resolve, reject) {
+        db.run('INSERT INTO paper (room_id, user, body) VALUES (?, ?, ?)', roomId, user, content,
+            (err) => {
+                err ? reject(err) : resolve(content);
+            }
+        );
+    });
+}
+
+/*
+ * TODO:
+ * [] Add a state for paper and pulling so that it can be pulled.
+ * [] Ordering for paper observed s.t. reshuffled every new round 
+ */
+
+function pull_paper(roomId) {
+    // Determine next slip to send
+    // Reshuffle if none are left in ordering
+    //   - Alternatively maintain relatively shuffled ordering out of all papers replaced in current round
+    //   - game mode might want to allow for re-pulls without exhausting option
+}
 
 
 module.exports = { create_room, join_room, init_db }
